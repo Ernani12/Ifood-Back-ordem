@@ -1,0 +1,45 @@
+Correções necessárias para fazer o fluxo Angular → backend → Redis funcionar:
+
+1. **Front‑end (Angular)**
+   - No `OrderService` a URL está apontando para a porta 8080.
+     deve ser alterada para `http://localhost:8081/orders` (a porta
+     em que o serviço Java está exposto no docker‑compose).
+   - Garanta que o `@CrossOrigin` no controller permita o domínio do
+     frontend (já está configurado com `origins="*"`).
+   - Se compilar e empacotar o frontend em Docker, ajuste o `environment`
+     ou `proxy.conf.json` para apontar para a porta 8081.
+
+2. **Back‑end (Java/Spring Boot)**
+   - A aplicação recebia a propriedade `spring.redis.host` via
+     `${REDIS_HOST:localhost}`; dentro do container o valor padrão
+     "localhost" fazia com que o cliente tentasse conectar em 127.0.0.1,
+     que não tem Redis, resultando em `Connection refused`.
+   - Foi adicionado `src/.../config/RedisConfig.java` para configurar
+     explicitamente `LettuceConnectionFactory` e `RedisTemplate` e
+     imprimir nos logs o host/porta usados.
+   - O `application.properties` agora define
+     `spring.redis.host=${REDIS_HOST:redis}` para usar o serviço "redis"
+     da rede Docker por padrão e explicar a substituição para dev local.
+   - Ao reconstruir a imagem (`docker-compose build --no-cache`) o novo
+     arquivo será incluído e o comportamento será correto.
+
+3. **Docker**
+   - Após ajustar o código, execute:
+     ```sh
+     docker-compose down --rmi local && \
+       docker-compose up --build
+     ```
+     Isso garante que a imagem do serviço seja reconstruída com as
+     alterações e que o Redis e os demais serviços voltem a subir.
+
+4. **Validação**
+   - Faça um POST conforme descrito no `TEST_POST.md` e observe os
+     logs do `order-service`. Você deverá ver a linha:
+     `Configuring LettuceConnectionFactory with host=redis port=6379`
+     seguida de `SALVANDO NO REDIS 🔥` e nenhum `Connection refused`.
+   - Depois use `docker exec redis-pizza redis-cli KEYS 'order:*'`
+     para confirmar que a chave foi gravada.
+
+Esse arquivo pode ser deixado na raiz para referência futura.  Os
+passos acima resolvem o problema do Redis e adaptam o frontend ao
+endpoint correto.
